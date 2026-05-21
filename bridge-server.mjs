@@ -1,99 +1,78 @@
 // bridge-server.mjs — 小路 ↔ 西奥多 WebSocket 中转站
-// 启动: node bridge-server.mjs
-// 默认端口 18901，环境变量 BRIDGE_PORT 可覆盖
+// Deno Deploy 兼容
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-import { WebSocketServer } from 'ws';
-import { createServer } from 'node:http';
-import fs from 'node:fs';
-
-const PORT = parseInt(process.env.PORT || process.env.BRIDGE_PORT || '18901');
-const LOG = process.env.BRIDGE_LOG || 'C:\\Users\\hp\\.cc-connect\\logs\\bridge.log';
+const PORT = parseInt(Deno.env.get("PORT") || "18901");
 const clients = new Map();
 const inbox = new Map();
 
 function log(line) {
-  const t = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-  const entry = `[${t}] ${line}\n`;
-  fs.appendFileSync(LOG, entry);
-  console.log(entry.trim());
-}
-
-// --- HTTP debug endpoint (仅本地) ---
-const DEBUG_PORT = parseInt(process.env.DEBUG_PORT || '0');
-if (DEBUG_PORT) {
-  createServer((req, res) => {
-    if (req.url === '/debug') {
-      const state = {
-        clients: [...clients.keys()],
-        inbox: Object.fromEntries([...inbox].map(([k, v]) => [k, v.length])),
-      };
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(state));
-      return;
-    }
-    res.writeHead(404);
-    res.end('not found');
-  }).listen(DEBUG_PORT, '127.0.0.1');
+  const t = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  console.log(`[${t}] ${line}`);
 }
 
 // --- WebSocket ---
-const wss = new WebSocketServer({ port: PORT });
-log(`listening ws://0.0.0.0:${PORT}${DEBUG_PORT ? `  debug http://127.0.0.1:${DEBUG_PORT}/debug` : ''}`);
+const activeSockets = new Set();
 
-wss.on('connection', (ws, req) => {
+serve((req) => {
+  const upgrade = req.headers.get("upgrade") || "";
+  if (upgrade.toLowerCase() !== "websocket") {
+    return new Response("bridge ok", { status: 200 });
+  }
+
+  const { socket: ws, response } = Deno.upgradeWebSocket(req);
   let name = null;
-  const ip = req.socket.remoteAddress;
-  log(`new connection from ${ip}`);
 
-  ws.on('message', (raw) => {
+  ws.onopen = () => {
+    activeSockets.add(ws);
+    log(`new connection`);
+  };
+
+  ws.onmessage = (event) => {
     try {
-      const msg = JSON.parse(raw.toString());
+      const msg = JSON.parse(event.data);
 
-      // --- 注册（不碰收件箱） ---
-      if (msg.type === 'hello') {
+      // --- 注册 ---
+      if (msg.type === "hello") {
         name = msg.name;
         clients.set(name, ws);
-        ws.send(JSON.stringify({ type: 'ok', name }));
-        log(`${name} registered (ip=${ip})`);
+        ws.send(JSON.stringify({ type: "ok", name }));
+        log(`${name} registered`);
         return;
       }
 
       // --- 显式拉取收件箱 ---
-      if (msg.type === 'get_inbox' && name) {
+      if (msg.type === "get_inbox" && name) {
         const queued = inbox.get(name) || [];
         log(`${name} get_inbox → ${queued.length} messages`);
-        ws.send(JSON.stringify({ type: 'inbox', messages: queued }));
+        ws.send(JSON.stringify({ type: "inbox", messages: queued }));
         if (queued.length) inbox.delete(name);
         return;
       }
 
       // --- 发送消息 ---
-      if (msg.type === 'send' && name) {
+      if (msg.type === "send" && name) {
         const { to, text } = msg;
         const envelope = { from: name, to, text, time: Date.now() };
-        const target = clients.get(to);
-
-        if (target && target.readyState === 1) {
-          target.send(JSON.stringify({ type: 'message', ...envelope }));
-          log(`${name} → ${to} (live)`);
-        } else {
-          if (!inbox.has(to)) inbox.set(to, []);
-          inbox.get(to).push(envelope);
-          log(`${name} → ${to} (inbox, now ${inbox.get(to).length} msgs)`);
-        }
-
-        ws.send(JSON.stringify({ type: 'ack', to }));
-        return;
+        if (!inbox.has(to)) inbox.set(to, []);
+        inbox.get(to).push(envelope);
+        log(`${name} → ${to} (inbox, now ${inbox.get(to).length} msgs)`);
+        ws.send(JSON.stringify({ type: "ack", to }));
       }
     } catch {
-      ws.send(JSON.stringify({ type: 'error', text: 'invalid json' }));
+      ws.send(JSON.stringify({ type: "error", text: "invalid json" }));
     }
-  });
+  };
 
-  ws.on('close', () => {
+  ws.onclose = () => {
+    activeSockets.delete(ws);
     if (name) {
       clients.delete(name);
       log(`${name} disconnected`);
     }
-  });
-});
+  };
+
+  return response;
+}, { port: PORT });
+
+log(`listening ws://0.0.0.0:${PORT}`);

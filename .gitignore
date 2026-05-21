@@ -8,3 +8,13 @@ config.toml
 ngrok.exe
 ngrok.yml
 .cc-connect/
+sessions/
+run/
+weixin/
+crons/
+netease_cookie.txt
+daemon.json
+cc-connect-daemon.ps1
+.config.toml.lock
+startup-notify.bat
+package-lock.json

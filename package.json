@@ -1,0 +1,13 @@
+{
+  "name": "cc-connect-bridge",
+  "private": true,
+  "scripts": {
+    "start": "node bridge-server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.20.1"
+  }
+}

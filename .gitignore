@@ -1,0 +1,10 @@
+node_modules/
+logs/
+.env
+*.log
+bridge-auto.mjs
+bridge-cli.mjs
+config.toml
+ngrok.exe
+ngrok.yml
+.cc-connect/

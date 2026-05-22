@@ -61,7 +61,7 @@ async function handleRequest(req) {
         time: new Date().toISOString(),
       };
       await addToInbox(body.to, msg);
-      return new Response(JSON.stringify({ ok: true, id: msg.id }), {
+      return new Response(JSON.stringify({ ok: true, id: msg.id, to: body.to }), {
         headers: { "content-type": "application/json" },
       });
     } catch (e) {
@@ -77,7 +77,7 @@ async function handleRequest(req) {
     }
     try {
       const msgs = await getInbox(name);
-      return new Response(JSON.stringify({ messages: msgs }), {
+      return new Response(JSON.stringify({ messages: msgs, lookedUp: name }), {
         headers: { "content-type": "application/json" },
       });
     } catch (e) {
@@ -85,17 +85,20 @@ async function handleRequest(req) {
     }
   }
 
-  // GET /debug — check KV status
-  if (req.method === "GET" && url.pathname === "/debug") {
+  // GET /dump — list all KV entries under "inbox"
+  if (req.method === "GET" && url.pathname === "/dump") {
     try {
       const db = await getKv();
-      await db.set(["debug"], { ts: Date.now() });
-      const result = await db.get(["debug"]);
-      return new Response(JSON.stringify({ kv: "ok", val: result.value }), {
+      const entries = [];
+      const iter = db.list({ prefix: ["inbox"] });
+      for await (const entry of iter) {
+        entries.push({ key: entry.key, value: entry.value });
+      }
+      return new Response(JSON.stringify({ entries }, null, 2), {
         headers: { "content-type": "application/json" },
       });
     } catch (e) {
-      return new Response(JSON.stringify({ kv: "error", error: e.message }), { status: 500 });
+      return new Response(JSON.stringify({ error: e.message }), { status: 500 });
     }
   }
 

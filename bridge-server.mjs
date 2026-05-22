@@ -1,10 +1,27 @@
 let kv = null;
 
 async function getKv() {
-  if (!kv) {
-    kv = await Deno.openKv();
-  }
+  if (!kv) kv = await Deno.openKv();
   return kv;
+}
+
+// Read request body safely — tries UTF-8 then GBK
+async function readBody(req) {
+  const buf = await req.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  // Try UTF-8
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return JSON.parse(text);
+  } catch {
+    // Try GBK (common for Chinese Windows)
+    try {
+      const text = new TextDecoder("gbk").decode(bytes);
+      return JSON.parse(text);
+    } catch {
+      throw new Error("cannot decode body");
+    }
+  }
 }
 
 async function getInbox(name) {
@@ -49,7 +66,7 @@ async function handleRequest(req) {
   // POST /send
   if (req.method === "POST" && url.pathname === "/send") {
     try {
-      const body = await req.json();
+      const body = await readBody(req);
       if (!body.from || !body.to || !body.content) {
         return new Response(JSON.stringify({ error: "missing from/to/content" }), { status: 400 });
       }
@@ -61,7 +78,7 @@ async function handleRequest(req) {
         time: new Date().toISOString(),
       };
       await addToInbox(body.to, msg);
-      return new Response(JSON.stringify({ ok: true, id: msg.id, to: body.to }), {
+      return new Response(JSON.stringify({ ok: true, id: msg.id }), {
         headers: { "content-type": "application/json" },
       });
     } catch (e) {
@@ -77,24 +94,7 @@ async function handleRequest(req) {
     }
     try {
       const msgs = await getInbox(name);
-      return new Response(JSON.stringify({ messages: msgs, lookedUp: name }), {
-        headers: { "content-type": "application/json" },
-      });
-    } catch (e) {
-      return new Response(JSON.stringify({ error: e.message }), { status: 500 });
-    }
-  }
-
-  // GET /dump — list all KV entries under "inbox"
-  if (req.method === "GET" && url.pathname === "/dump") {
-    try {
-      const db = await getKv();
-      const entries = [];
-      const iter = db.list({ prefix: ["inbox"] });
-      for await (const entry of iter) {
-        entries.push({ key: entry.key, value: entry.value });
-      }
-      return new Response(JSON.stringify({ entries }, null, 2), {
+      return new Response(JSON.stringify({ messages: msgs }), {
         headers: { "content-type": "application/json" },
       });
     } catch (e) {

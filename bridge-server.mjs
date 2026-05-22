@@ -1,15 +1,18 @@
-const inbox = new Map();
+const kv = await Deno.openKv();
 
-function getInbox(name) {
-  const msgs = inbox.get(name) || [];
-  inbox.delete(name);
+async function getInbox(name) {
+  const msgs = [];
+  const iter = kv.list({ prefix: ["inbox", name] });
+  for await (const entry of iter) {
+    msgs.push(entry.value);
+    await kv.delete(entry.key);
+  }
   return msgs;
 }
 
-function addToInbox(name, msg) {
-  const msgs = inbox.get(name) || [];
-  msgs.push(msg);
-  inbox.set(name, msgs);
+async function addToInbox(name, msg) {
+  const key = ["inbox", name, msg.id];
+  await kv.set(key, msg);
 }
 
 async function handleRequest(req) {
@@ -19,14 +22,12 @@ async function handleRequest(req) {
   const upgrade = req.headers.get("upgrade");
   if (upgrade && upgrade.toLowerCase() === "websocket") {
     const { socket, response } = Deno.upgradeWebSocket(req);
-    let registeredName = "";
 
     socket.onmessage = (ev) => {
       try {
         const raw = typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data);
         const data = JSON.parse(raw);
         if (data.type === "register" && data.name) {
-          registeredName = data.name;
           socket.send(JSON.stringify({ type: "registered", name: data.name }));
         }
       } catch { /* ignore */ }
@@ -51,12 +52,12 @@ async function handleRequest(req) {
         content: body.content,
         time: new Date().toISOString(),
       };
-      addToInbox(body.to, msg);
+      await addToInbox(body.to, msg);
       return new Response(JSON.stringify({ ok: true, id: msg.id }), {
         headers: { "content-type": "application/json" },
       });
-    } catch {
-      return new Response(JSON.stringify({ error: "invalid json" }), { status: 400 });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: e.message }), { status: 400 });
     }
   }
 
@@ -66,7 +67,7 @@ async function handleRequest(req) {
     if (!name) {
       return new Response(JSON.stringify({ error: "missing name" }), { status: 400 });
     }
-    const msgs = getInbox(name);
+    const msgs = await getInbox(name);
     return new Response(JSON.stringify({ messages: msgs }), {
       headers: { "content-type": "application/json" },
     });

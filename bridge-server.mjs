@@ -1,18 +1,26 @@
-const kv = await Deno.openKv();
+let kv = null;
+
+async function getKv() {
+  if (!kv) {
+    kv = await Deno.openKv();
+  }
+  return kv;
+}
 
 async function getInbox(name) {
+  const db = await getKv();
   const msgs = [];
-  const iter = kv.list({ prefix: ["inbox", name] });
+  const iter = db.list({ prefix: ["inbox", name] });
   for await (const entry of iter) {
     msgs.push(entry.value);
-    await kv.delete(entry.key);
+    await db.delete(entry.key);
   }
   return msgs;
 }
 
 async function addToInbox(name, msg) {
-  const key = ["inbox", name, msg.id];
-  await kv.set(key, msg);
+  const db = await getKv();
+  await db.set(["inbox", name, msg.id], msg);
 }
 
 async function handleRequest(req) {
@@ -57,7 +65,7 @@ async function handleRequest(req) {
         headers: { "content-type": "application/json" },
       });
     } catch (e) {
-      return new Response(JSON.stringify({ error: e.message }), { status: 400 });
+      return new Response(JSON.stringify({ error: e.message }), { status: 500 });
     }
   }
 
@@ -67,10 +75,28 @@ async function handleRequest(req) {
     if (!name) {
       return new Response(JSON.stringify({ error: "missing name" }), { status: 400 });
     }
-    const msgs = await getInbox(name);
-    return new Response(JSON.stringify({ messages: msgs }), {
-      headers: { "content-type": "application/json" },
-    });
+    try {
+      const msgs = await getInbox(name);
+      return new Response(JSON.stringify({ messages: msgs }), {
+        headers: { "content-type": "application/json" },
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    }
+  }
+
+  // GET /debug — check KV status
+  if (req.method === "GET" && url.pathname === "/debug") {
+    try {
+      const db = await getKv();
+      await db.set(["debug"], { ts: Date.now() });
+      const result = await db.get(["debug"]);
+      return new Response(JSON.stringify({ kv: "ok", val: result.value }), {
+        headers: { "content-type": "application/json" },
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ kv: "error", error: e.message }), { status: 500 });
+    }
   }
 
   return new Response("zee-bridge ok");

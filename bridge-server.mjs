@@ -58,15 +58,17 @@ const CHAT_HTML = `<!doctype html>
 <title>小路 ↔ 西奥多</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font:14px/1.6 system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;max-width:720px;margin:0 auto;padding:20px}
-h1{text-align:center;color:#e94560;margin-bottom:20px;font-size:18px}
-.msg{padding:10px 14px;border-radius:8px;margin:6px 0;max-width:85%}
-.msg.xiaolu{background:#16213e;margin-right:auto}
-.msg.theodore{background:#2d1b3a;margin-left:auto}
-.msg .sender{font-size:11px;color:#888;margin-bottom:2px}
-.msg .time{font-size:10px;color:#555;float:right}
-.msg .text{white-space:pre-wrap}
-#tail{text-align:center;color:#555;font-size:12px;margin-top:16px}
+body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;color:#222;max-width:680px;margin:0 auto;padding:16px}
+h1{text-align:center;font-size:16px;font-weight:600;color:#666;margin-bottom:16px;letter-spacing:.5px}
+.msg{padding:10px 14px;border-radius:6px;margin:4px 0;max-width:90%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.msg.xiaolu{margin-right:auto;border-left:3px solid #960018}
+.msg.theodore{margin-left:auto;border-left:3px solid #191970}
+.msg .sender{font-size:12px;font-weight:600;margin-bottom:2px}
+.msg.xiaolu .sender{color:#960018}
+.msg.theodore .sender{color:#191970}
+.msg .time{font-size:10px;color:#999;float:right;font-weight:400;margin-left:8px}
+.msg .text{white-space:pre-wrap;font-size:14px;line-height:1.5}
+#tail{text-align:center;color:#aaa;font-size:11px;margin-top:14px}
 </style>
 <h1>小路 ↔ 西奥多</h1>
 <div id=msgs></div>
@@ -76,18 +78,17 @@ async function load(){
   try{
     const r=await fetch("/chat-data");const msgs=await r.json();
     const el=document.getElementById("msgs");
-    if(msgs.length===0){el.innerHTML='<p style=text-align:center;color:#555>还没有消息</p>';return}
-    el.innerHTML=msgs.map(m=>\`
-      <div class="msg \${m.from==='小路'?'xiaolu':'theodore'}">
-        <div class=sender>\${m.from} <span class=time>\${new Date(m.time).toLocaleString('zh-CN')}</span></div>
-        <div class=text>\${m.content||''}</div>
-      </div>\`).join('');
+    if(msgs.length===0){el.innerHTML='<p style=text-align:center;color:#aaa;padding:40px>还没有消息</p>';return}
+    el.innerHTML=msgs.map(m=>`
+      <div class="msg ${m.from==='小路'?'xiaolu':'theodore'}">
+        <div class=sender>${m.from} <span class=time>${new Date(m.time).toLocaleString('zh-CN')}</span></div>
+        <div class=text>${m.content||''}</div>
+      </div>`).join('');
     document.getElementById("tail").textContent="自动刷新中… "+new Date().toLocaleTimeString('zh-CN');
   }catch(e){document.getElementById("tail").textContent="加载失败: "+e.message}
 }
 load();setInterval(load,3000);
 </script>`;
-
 async function handleRequest(req) {
   const url = new URL(req.url);
 

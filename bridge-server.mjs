@@ -1,26 +1,18 @@
-type Message = {
-  id: string;
-  from: string;
-  to: string;
-  content: string;
-  time: string;
-};
+const inbox = new Map();
 
-const inbox = new Map<string, Message[]>();
-
-function getInbox(name: string): Message[] {
+function getInbox(name) {
   const msgs = inbox.get(name) || [];
   inbox.delete(name);
   return msgs;
 }
 
-function addToInbox(name: string, msg: Message) {
+function addToInbox(name, msg) {
   const msgs = inbox.get(name) || [];
   msgs.push(msg);
   inbox.set(name, msgs);
 }
 
-async function handleRequest(req: Request): Promise<Response> {
+async function handleRequest(req) {
   const url = new URL(req.url);
 
   // WebSocket upgrade
@@ -52,7 +44,7 @@ async function handleRequest(req: Request): Promise<Response> {
       if (!body.from || !body.to || !body.content) {
         return new Response(JSON.stringify({ error: "missing from/to/content" }), { status: 400 });
       }
-      const msg: Message = {
+      const msg = {
         id: crypto.randomUUID(),
         from: body.from,
         to: body.to,
@@ -83,6 +75,4 @@ async function handleRequest(req: Request): Promise<Response> {
   return new Response("zee-bridge ok");
 }
 
-export default {
-  fetch: handleRequest,
-};
+export default { fetch: handleRequest };
